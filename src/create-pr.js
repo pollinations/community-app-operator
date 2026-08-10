@@ -59,26 +59,34 @@ const IDENTITY_FIELDS = [
     "approvedDate",
 ];
 
-function locateCurrentRow(apps, baseApp, used = new Set()) {
-    const exact = apps
-        .map((app, index) => ({ app, index }))
-        .filter(({ app, index }) => {
-            if (used.has(index)) return false;
-            return IDENTITY_FIELDS.every(
-                (field) =>
-                    JSON.stringify(app[field]) ===
-                    JSON.stringify(baseApp[field]),
-            );
-        });
-    if (exact.length === 0) {
-        throw new Error(`Could not locate current catalog row: ${baseApp.name}`);
+function locateCurrentRow(apps, baseApp, used = new Set(), alternatives = []) {
+    for (const identity of [baseApp, ...alternatives]) {
+        const exact = apps
+            .map((app, index) => ({ app, index }))
+            .filter(({ app, index }) => {
+                if (used.has(index)) return false;
+                return IDENTITY_FIELDS.every(
+                    (field) =>
+                        JSON.stringify(app[field]) ===
+                        JSON.stringify(identity[field]),
+                );
+            });
+        if (exact.length > 0) {
+            const index = exact[0].index;
+            used.add(index);
+            return index;
+        }
     }
-    const index = exact[0].index;
-    used.add(index);
-    return index;
+    throw new Error(`Could not locate current catalog row: ${baseApp.name}`);
 }
 
-function applyArtifactToCurrent(current, base, artifact, kind) {
+function applyArtifactToCurrent(
+    current,
+    base,
+    artifact,
+    kind,
+    identityCatalog = null,
+) {
     const patch = diffCatalogs(base, artifact);
     const updated = JSON.parse(JSON.stringify(current));
     const used = new Set();
@@ -102,11 +110,15 @@ function applyArtifactToCurrent(current, base, artifact, kind) {
         if (patch.removed.length || patch.metadata.length) {
             throw new Error("Screenshot artifact contains non-screenshot changes");
         }
+        if (identityCatalog && identityCatalog.length !== base.length) {
+            throw new Error("Screenshot identity catalog must align with the base");
+        }
         for (const match of patch.screenshots) {
             const currentIndex = locateCurrentRow(
                 updated,
                 base[match.baseIndex],
                 used,
+                identityCatalog ? [identityCatalog[match.baseIndex]] : [],
             );
             applyChanges(updated[currentIndex], match.screenshotChanges);
         }
@@ -144,6 +156,14 @@ function main() {
     const artifact = readApps(catalogPath);
     const runDirectory = path.dirname(path.dirname(manifestPath));
     const base = readApps(path.join(runDirectory, "base.catalog.json"));
+    const metadataCatalogPath = path.join(
+        path.dirname(manifestPath),
+        "metadata.catalog.json",
+    );
+    const identityCatalog =
+        kind === "screenshots" && fs.existsSync(metadataCatalogPath)
+            ? readApps(metadataCatalogPath)
+            : null;
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
     const checkout = fs.mkdtempSync(
         path.join(os.tmpdir(), `community-app-${kind}-`),
@@ -168,7 +188,13 @@ function main() {
         const checkoutCatalog = path.join(checkout, "apps/catalog.json");
         const current = readApps(checkoutCatalog);
         writeApps(
-            applyArtifactToCurrent(current, base, artifact, kind),
+            applyArtifactToCurrent(
+                current,
+                base,
+                artifact,
+                kind,
+                identityCatalog,
+            ),
             checkoutCatalog,
         );
 

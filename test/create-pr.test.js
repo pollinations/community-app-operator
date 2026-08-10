@@ -53,6 +53,50 @@ test("replays removals without deleting newer rows", () => {
     );
 });
 
+test("replays screenshots after reviewed metadata has already merged", () => {
+    const base = [oldApp, neighbor];
+    const artifact = [{ ...oldApp, screenshotUrl: "https://image.test" }, neighbor];
+    const metadataCatalog = [
+        {
+            ...oldApp,
+            name: "New",
+            repositoryUrl: "https://github.com/example/new",
+            url: "https://new.test",
+        },
+        neighbor,
+    ];
+    const current = [
+        { name: "Newly submitted", url: "https://submitted.test" },
+        { ...metadataCatalog[0], requests24h: 99 },
+        neighbor,
+    ];
+    const result = applyArtifactToCurrent(
+        current,
+        base,
+        artifact,
+        "screenshots",
+        metadataCatalog,
+    );
+    assert.equal(result.length, 3);
+    assert.equal(result[1].name, "New");
+    assert.equal(result[1].requests24h, 99);
+    assert.equal(result[1].screenshotUrl, "https://image.test");
+});
+
+test("rejects a screenshot identity catalog with different row alignment", () => {
+    assert.throws(
+        () =>
+            applyArtifactToCurrent(
+                [oldApp, neighbor],
+                [oldApp, neighbor],
+                [{ ...oldApp, screenshotUrl: "https://image.test" }, neighbor],
+                "screenshots",
+                [oldApp],
+            ),
+        /identity catalog must align/,
+    );
+});
+
 test("fails closed when the reviewed row changed identity", () => {
     assert.throws(
         () => locateCurrentRow([{ ...oldApp, url: "https://changed.test" }], oldApp),
