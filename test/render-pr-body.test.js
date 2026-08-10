@@ -23,6 +23,11 @@ const manifest = {
             name: "Image App",
             to: "https://media.pollinations.ai/image",
         },
+        {
+            from: "https://media.pollinations.ai/old",
+            name: "Refreshed App",
+            to: "https://media.pollinations.ai/new",
+        },
     ],
 };
 
@@ -39,8 +44,10 @@ test("renders kind-specific PR bodies", () => {
     assert.doesNotMatch(removals, /media\.pollinations/);
 
     const screenshots = renderPrBody(manifest, "screenshots");
-    assert.match(screenshots, /screenshots for 1 retained/);
-    assert.match(screenshots, /https:\/\/media\.pollinations\.ai\/image/);
+    assert.match(screenshots, /Adds screenshots to 1 retained/);
+    assert.match(screenshots, /Refreshes screenshots for 1 retained/);
+    assert.match(screenshots, /https:\/\/media\.pollinations\.ai\/new/);
+    assert.doesNotMatch(screenshots, /https:\/\/media\.pollinations\.ai\/image/);
     assert.doesNotMatch(screenshots, /Host does not exist/);
 });
 

@@ -52,15 +52,27 @@ ${rows.join("\n") || "| — | — | — | — |"}
 }
 
 function renderScreenshots(manifest) {
-    const rows = manifest.screenshotUpdates.map(
+    const added = manifest.screenshotUpdates.filter(
+        (app) => app.from == null || app.from === "",
+    );
+    const refreshed = manifest.screenshotUpdates.filter(
+        (app) => app.from != null && app.from !== "",
+    );
+    const rows = refreshed.map(
         (app) => `| ${tableCell(app.name)} | ${tableCell(app.to)} |`,
     );
     return `## Summary
 
-- Adds or refreshes screenshots for ${manifest.screenshotUpdates.length} retained community catalog rows.
+- Adds screenshots to ${added.length} retained community catalog rows.
+- Refreshes screenshots for ${refreshed.length} retained community catalog rows.
 - Does not remove apps or change other metadata.
 
-| App | Screenshot URL |
+## Refreshed screenshots
+
+New screenshot additions are reviewable directly in the catalog diff. Previously
+populated screenshot URLs that changed are listed below.
+
+| App | New screenshot URL |
 | --- | --- |
 ${rows.join("\n") || "| — | — |"}
 `;
