@@ -101,6 +101,22 @@ function targetId(key) {
     return crypto.createHash("sha256").update(key).digest("hex").slice(0, 12);
 }
 
+function metadataReviewItems(diff, candidate) {
+    return diff.metadata.map((match) => {
+        const key = JSON.stringify([
+            match.baseIndex,
+            match.candidateIndex,
+            match.metadataChanges,
+        ]);
+        return {
+            catalogIndex: match.baseIndex,
+            changes: match.metadataChanges,
+            id: targetId(`metadata:${key}`),
+            name: candidate[match.candidateIndex].name,
+        };
+    });
+}
+
 function selectTargets(entries, mode = "all") {
     if (!MODES.has(mode)) {
         throw new Error(`--mode must be one of: ${[...MODES].join(", ")}`);
@@ -173,8 +189,9 @@ function calculateDailyBatch(totalTargets, batchSize, now = new Date()) {
 function prepareReview(base, candidate, options = {}) {
     const mode = options.mode || "all";
     const limit = options.limit || Number.MAX_SAFE_INTEGER;
-    const entries = candidate
-        ? diffCatalogs(base, candidate).removed.map(({ app, baseIndex }) => ({
+    const diff = candidate ? diffCatalogs(base, candidate) : null;
+    const entries = diff
+        ? diff.removed.map(({ app, baseIndex }) => ({
               app,
               catalogIndex: baseIndex,
           }))
@@ -183,6 +200,7 @@ function prepareReview(base, candidate, options = {}) {
     const batch = calculateDailyBatch(selected.targets.length, limit);
     return {
         batch,
+        metadataChanges: diff ? metadataReviewItems(diff, candidate) : [],
         skipped: selected.skipped,
         targets: selected.targets.slice(batch.offset, batch.offset + limit),
         totalTargets: selected.targets.length,
@@ -217,6 +235,7 @@ function writeReviewRun(basePath, candidatePath, options = {}) {
             ? path.basename(candidateSnapshot)
             : null,
         createdAt,
+        metadataChanges: prepared.metadataChanges,
         mode: options.mode || "all",
         results: prepared.targets,
         schemaVersion: 1,
@@ -234,8 +253,15 @@ function writeReviewRun(basePath, candidatePath, options = {}) {
             reason: null,
             targetUrl: target.targetUrl,
         })),
+        metadataDecisions: prepared.metadataChanges.map((change) => ({
+            apply: false,
+            id: change.id,
+            name: change.name,
+            outcome: "pending",
+            reason: null,
+        })),
         instructions:
-            "Use Codex's in-app Browser to inspect every target, then record keep, remove, or retry with evidence. Set apply=true only after human approval.",
+            "Use Codex's in-app Browser to inspect every removal target and metadata correction. Set apply=true only after human approval.",
         schemaVersion: 1,
     };
     fs.writeFileSync(
@@ -281,6 +307,7 @@ if (require.main === module) {
 module.exports = {
     calculateDailyBatch,
     normalizeHttpUrl,
+    metadataReviewItems,
     prepareReview,
     resolveTarget,
     selectTargets,

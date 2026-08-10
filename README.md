@@ -51,6 +51,20 @@ Valid outcomes are `keep`, `remove`, and `retry`. Add `--apply=true` only after
 a human approves that exact decision. Review evidence is ordinary text or a
 safe URL; never store browser credentials or session state in a run.
 
+Metadata corrections have their own approval ledger:
+
+```bash
+npm run record -- runs/<timestamp>/review.json \
+  --kind=metadata \
+  --id=<metadata-id> \
+  --outcome=approve \
+  --reason="The canonical product name is visible on the live site." \
+  --apply=true
+```
+
+Use `--outcome=reject` without `--apply=true` when the proposed correction is
+not supported. Unapproved metadata never appears in the split catalog.
+
 ## Split the benchmark into three changes
 
 After review, generate independent catalog artifacts:

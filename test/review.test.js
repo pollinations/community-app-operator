@@ -86,6 +86,18 @@ test("prepares only removals when a candidate catalog is supplied", () => {
     assert.equal(prepared.totalTargets, 1);
     assert.equal(prepared.targets[0].name, "Remove");
     assert.deepEqual(prepared.targets[0].catalogIndices, [1]);
+    assert.equal(prepared.metadataChanges.length, 0);
+});
+
+test("prepares stable metadata corrections separately from removals", () => {
+    const base = [app({ name: "Old" })];
+    const candidate = [app({ name: "New" })];
+    const prepared = prepareReview(base, candidate, { limit: 50 });
+    assert.equal(prepared.targets.length, 0);
+    assert.equal(prepared.metadataChanges.length, 1);
+    assert.equal(prepared.metadataChanges[0].name, "New");
+    assert.equal(prepared.metadataChanges[0].changes[0].field, "name");
+    assert.match(prepared.metadataChanges[0].id, /^[a-f0-9]{12}$/);
 });
 
 test("rotates deterministic daily batches", () => {

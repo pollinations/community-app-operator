@@ -3,7 +3,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const OUTCOMES = new Set(["keep", "remove", "retry"]);
+const OUTCOMES = {
+    metadata: new Set(["approve", "reject"]),
+    removal: new Set(["keep", "remove", "retry"]),
+};
 
 function getArgument(name) {
     const prefix = `--${name}=`;
@@ -20,19 +23,30 @@ function parseBoolean(value, fallback = false) {
 }
 
 function recordDecision(review, input) {
-    if (!Array.isArray(review.decisions)) {
-        throw new Error("Review file does not contain a decisions array");
+    const kind = input.kind || "removal";
+    const collectionName =
+        kind === "metadata" ? "metadataDecisions" : "decisions";
+    const decisions = review[collectionName];
+    if (!Array.isArray(decisions)) {
+        throw new Error(`Review file does not contain ${collectionName}`);
     }
-    if (!OUTCOMES.has(input.outcome)) {
-        throw new Error("--outcome must be keep, remove, or retry");
+    if (!OUTCOMES[kind]?.has(input.outcome)) {
+        throw new Error(
+            kind === "metadata"
+                ? "--outcome must be approve or reject"
+                : "--outcome must be keep, remove, or retry",
+        );
     }
     if (!input.reason?.trim()) {
         throw new Error("--reason is required");
     }
-    if (input.apply && input.outcome === "retry") {
-        throw new Error("A retry decision cannot be applied");
+    if (
+        input.apply &&
+        (input.outcome === "retry" || input.outcome === "reject")
+    ) {
+        throw new Error(`A ${input.outcome} decision cannot be applied`);
     }
-    const decision = review.decisions.find((item) => item.id === input.id);
+    const decision = decisions.find((item) => item.id === input.id);
     if (!decision) throw new Error(`Unknown review target: ${input.id}`);
     Object.assign(decision, {
         apply: input.apply,
@@ -48,7 +62,7 @@ function main() {
     const reviewPath = path.resolve(process.argv[2] || "");
     if (!process.argv[2] || !fs.existsSync(reviewPath)) {
         throw new Error(
-            "Usage: record-review.js RUN/review.json --id=ID --outcome=keep|remove|retry --reason=TEXT [--evidence=TEXT] [--apply=true]",
+            "Usage: record-review.js RUN/review.json [--kind=removal|metadata] --id=ID --outcome=OUTCOME --reason=TEXT [--evidence=TEXT] [--apply=true]",
         );
     }
     const review = JSON.parse(fs.readFileSync(reviewPath, "utf8"));
@@ -56,6 +70,7 @@ function main() {
         apply: parseBoolean(getArgument("apply")),
         evidence: getArgument("evidence"),
         id: getArgument("id"),
+        kind: getArgument("kind") || "removal",
         outcome: getArgument("outcome"),
         reason: getArgument("reason"),
     });

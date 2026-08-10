@@ -23,6 +23,22 @@ const candidate = [
     },
 ];
 const report = {
+    metadataChanges: [
+        {
+            catalogIndex: 2,
+            changes: [
+                {
+                    field: "name",
+                    from: "Old",
+                    fromPresent: true,
+                    to: "New",
+                    toPresent: true,
+                },
+            ],
+            id: "rename-id",
+            name: "New",
+        },
+    ],
     results: [
         {
             catalogIndices: [1],
@@ -44,6 +60,15 @@ test("builds three isolated catalogs", () => {
                 outcome: "remove",
                 reason: "The public host does not exist.",
                 targetUrl: "https://dead.test",
+            },
+        ],
+        metadataDecisions: [
+            {
+                apply: true,
+                id: "rename-id",
+                name: "New",
+                outcome: "approve",
+                reason: "The live site confirms the new name.",
             },
         ],
     };
@@ -85,6 +110,14 @@ test("rejects stale and unreasoned applied decisions", () => {
                         targetUrl: "https://dead.test",
                     },
                 ],
+                metadataDecisions: [
+                    {
+                        apply: false,
+                        id: "rename-id",
+                        name: "New",
+                        outcome: "pending",
+                    },
+                ],
             }),
         /needs a reason/,
     );
@@ -100,7 +133,41 @@ test("rejects stale and unreasoned applied decisions", () => {
                         targetUrl: "https://changed.test",
                     },
                 ],
+                metadataDecisions: [
+                    {
+                        apply: false,
+                        id: "rename-id",
+                        name: "New",
+                        outcome: "pending",
+                    },
+                ],
             }),
         /no longer matches/,
     );
+});
+
+test("does not apply rejected metadata corrections", () => {
+    const result = buildSplitCatalogs(base, candidate, report, {
+        decisions: [
+            {
+                apply: false,
+                id: "dead-id",
+                name: "Dead",
+                outcome: "keep",
+                targetUrl: "https://dead.test",
+            },
+        ],
+        metadataDecisions: [
+            {
+                apply: false,
+                id: "rename-id",
+                name: "New",
+                outcome: "reject",
+                reason: "The current brand is still Old.",
+            },
+        ],
+    });
+    assert.equal(result.catalogs.metadata[2].name, "Old");
+    assert.equal(result.manifest.metadataUpdates.length, 0);
+    assert.equal(result.manifest.metadataDecisions.reject, 1);
 });

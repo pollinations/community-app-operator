@@ -53,3 +53,38 @@ test("rejects applied retry decisions and invalid booleans", () => {
         /cannot be applied/,
     );
 });
+
+test("records approved and rejected metadata corrections separately", () => {
+    const review = {
+        decisions: [],
+        metadataDecisions: [
+            {
+                apply: false,
+                id: "metadata-id",
+                name: "Corrected App",
+                outcome: "pending",
+            },
+        ],
+    };
+    const decision = recordDecision(review, {
+        apply: true,
+        id: "metadata-id",
+        kind: "metadata",
+        outcome: "approve",
+        reason: "The live product confirms the correction.",
+    });
+    assert.equal(decision.outcome, "approve");
+    assert.equal(decision.apply, true);
+
+    assert.throws(
+        () =>
+            recordDecision(review, {
+                apply: true,
+                id: "metadata-id",
+                kind: "metadata",
+                outcome: "reject",
+                reason: "The live product contradicts the correction.",
+            }),
+        /reject decision cannot be applied/,
+    );
+});

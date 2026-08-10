@@ -35,18 +35,51 @@ function validateReview(report, review) {
             throw new Error(`Applied decision needs a reason: ${decision.name}`);
         }
     }
-    return targets;
+    const metadataChanges = report.metadataChanges || [];
+    const metadataDecisions = review.metadataDecisions || [];
+    if (metadataChanges.length !== metadataDecisions.length) {
+        throw new Error("Metadata decisions no longer match the report");
+    }
+    const metadataTargets = new Map(
+        metadataChanges.map((change) => [change.id, change]),
+    );
+    for (const decision of metadataDecisions) {
+        if (!metadataTargets.has(decision.id)) {
+            throw new Error(
+                `Metadata decision no longer matches the report: ${decision.name}`,
+            );
+        }
+        if (decision.apply && decision.outcome !== "approve") {
+            throw new Error(
+                `Applied metadata decision must be approved: ${decision.name}`,
+            );
+        }
+        if (decision.apply && !decision.reason?.trim()) {
+            throw new Error(
+                `Applied metadata decision needs a reason: ${decision.name}`,
+            );
+        }
+    }
+    return { metadataTargets, targets };
 }
 
 function buildSplitCatalogs(base, candidate, report, review) {
-    const targets = validateReview(report, review);
+    const { metadataTargets, targets } = validateReview(report, review);
     const diff = diffCatalogs(base, candidate);
     const metadata = clone(base);
     const removals = clone(base);
     const screenshots = clone(base);
 
-    for (const match of diff.metadata) {
-        applyChanges(metadata[match.baseIndex], match.metadataChanges);
+    const approvedMetadata = [];
+    for (const decision of review.metadataDecisions || []) {
+        if (!decision.apply || decision.outcome !== "approve") continue;
+        const change = metadataTargets.get(decision.id);
+        applyChanges(metadata[change.catalogIndex], change.changes);
+        approvedMetadata.push({
+            changes: change.changes,
+            name: change.name,
+            reason: decision.reason,
+        });
     }
     for (const match of diff.screenshots) {
         applyChanges(screenshots[match.baseIndex], match.screenshotChanges);
@@ -79,10 +112,7 @@ function buildSplitCatalogs(base, candidate, report, review) {
                 .length,
         ]),
     );
-    const metadataUpdates = diff.metadata.map((match) => ({
-        changes: match.metadataChanges,
-        name: candidate[match.candidateIndex].name,
-    }));
+    const metadataUpdates = approvedMetadata;
     const screenshotUpdates = diff.screenshots.map((match) => ({
         from: match.screenshotChanges[0].from,
         name: candidate[match.candidateIndex].name,
@@ -101,6 +131,14 @@ function buildSplitCatalogs(base, candidate, report, review) {
             decisions: decisionsByOutcome,
             generatedAt: new Date().toISOString(),
             metadataUpdates,
+            metadataDecisions: Object.fromEntries(
+                ["approve", "pending", "reject"].map((outcome) => [
+                    outcome,
+                    (review.metadataDecisions || []).filter(
+                        (decision) => decision.outcome === outcome,
+                    ).length,
+                ]),
+            ),
             removedApps,
             screenshotUpdates,
         },
