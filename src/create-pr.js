@@ -4,7 +4,8 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { readApps } = require("./catalog.js");
+const { readApps, writeApps } = require("./catalog.js");
+const { applyChanges, diffCatalogs } = require("./catalog-diff.js");
 const { KINDS } = require("./apply-review.js");
 const { renderPrBody } = require("./render-pr-body.js");
 
@@ -48,6 +49,86 @@ function findExisting(checkout, candidates) {
     return found;
 }
 
+const IDENTITY_FIELDS = [
+    "issueUrl",
+    "githubUserId",
+    "name",
+    "url",
+    "repositoryUrl",
+    "submittedDate",
+    "approvedDate",
+];
+
+function locateCurrentRow(apps, baseApp, used = new Set()) {
+    const exact = apps
+        .map((app, index) => ({ app, index }))
+        .filter(({ app, index }) => {
+            if (used.has(index)) return false;
+            return IDENTITY_FIELDS.every(
+                (field) =>
+                    JSON.stringify(app[field]) ===
+                    JSON.stringify(baseApp[field]),
+            );
+        });
+    if (exact.length === 0) {
+        throw new Error(`Could not locate current catalog row: ${baseApp.name}`);
+    }
+    const index = exact[0].index;
+    used.add(index);
+    return index;
+}
+
+function applyArtifactToCurrent(current, base, artifact, kind) {
+    const patch = diffCatalogs(base, artifact);
+    const updated = JSON.parse(JSON.stringify(current));
+    const used = new Set();
+
+    if (kind === "metadata") {
+        if (patch.removed.length || patch.screenshots.length) {
+            throw new Error("Metadata artifact contains non-metadata changes");
+        }
+        for (const match of patch.metadata) {
+            const currentIndex = locateCurrentRow(
+                updated,
+                base[match.baseIndex],
+                used,
+            );
+            applyChanges(updated[currentIndex], match.metadataChanges);
+        }
+        return updated;
+    }
+
+    if (kind === "screenshots") {
+        if (patch.removed.length || patch.metadata.length) {
+            throw new Error("Screenshot artifact contains non-screenshot changes");
+        }
+        for (const match of patch.screenshots) {
+            const currentIndex = locateCurrentRow(
+                updated,
+                base[match.baseIndex],
+                used,
+            );
+            applyChanges(updated[currentIndex], match.screenshotChanges);
+        }
+        return updated;
+    }
+
+    if (kind === "removals") {
+        if (patch.metadata.length || patch.screenshots.length) {
+            throw new Error("Removal artifact contains field changes");
+        }
+        const removalIndices = patch.removed.map(({ baseIndex }) =>
+            locateCurrentRow(updated, base[baseIndex], used),
+        );
+        for (const index of removalIndices.sort((a, b) => b - a)) {
+            updated.splice(index, 1);
+        }
+        return updated;
+    }
+
+    throw new Error(`Unsupported artifact kind: ${kind}`);
+}
+
 function main() {
     const manifestPath = path.resolve(process.argv[2] || "");
     const kind = getArgument("kind");
@@ -60,7 +141,9 @@ function main() {
         path.dirname(manifestPath),
         `${kind}.catalog.json`,
     );
-    readApps(catalogPath);
+    const artifact = readApps(catalogPath);
+    const runDirectory = path.dirname(path.dirname(manifestPath));
+    const base = readApps(path.join(runDirectory, "base.catalog.json"));
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
     const checkout = fs.mkdtempSync(
         path.join(os.tmpdir(), `community-app-${kind}-`),
@@ -82,7 +165,12 @@ function main() {
             .toISOString()
             .replace(/[:.]/g, "-")}`;
         run("git", ["switch", "-c", branch], checkout);
-        fs.copyFileSync(catalogPath, path.join(checkout, "apps/catalog.json"));
+        const checkoutCatalog = path.join(checkout, "apps/catalog.json");
+        const current = readApps(checkoutCatalog);
+        writeApps(
+            applyArtifactToCurrent(current, base, artifact, kind),
+            checkoutCatalog,
+        );
 
         const generator = findExisting(checkout, [
             "apps/app-management/generate-catalog-outputs.js",
@@ -144,4 +232,9 @@ if (require.main === module) {
     }
 }
 
-module.exports = { PRS, findExisting };
+module.exports = {
+    PRS,
+    applyArtifactToCurrent,
+    findExisting,
+    locateCurrentRow,
+};
