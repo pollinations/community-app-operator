@@ -1,0 +1,21 @@
+{
+  "name": "@pollinations/community-app-operator",
+  "version": "0.1.0",
+  "description": "Human-supervised maintenance for the Pollinations community app catalog",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "apply": "node src/apply-review.js",
+    "fetch": "node src/catalog.js fetch",
+    "install-browser": "playwright-core install chromium",
+    "propose": "node src/create-pr.js",
+    "review": "node src/review.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}
