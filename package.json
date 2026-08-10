@@ -10,12 +10,9 @@
   "scripts": {
     "apply": "node src/apply-review.js",
     "fetch": "node src/catalog.js fetch",
-    "install-browser": "playwright-core install chromium",
     "propose": "node src/create-pr.js",
+    "record": "node src/record-review.js",
     "review": "node src/review.js",
     "test": "node --test test/*.test.js"
-  },
-  "dependencies": {
-    "playwright-core": "^1.62.1"
   }
 }

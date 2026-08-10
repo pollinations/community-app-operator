@@ -12,113 +12,72 @@ function tableCell(value) {
         .replace(/[\r\n]+/g, " ");
 }
 
-function html(value) {
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;");
-}
-
-function renderPrBody(report, runUrl) {
-    const results = report.results || [];
-    const updatedApps = report.updatedApps || [];
-    const removedApps = report.removedApps || [];
-    const kept = results.filter((result) => result.outcome === "keep").length;
-    const unresolved = results.filter((result) => result.outcome === "retry");
-
-    const updates = updatedApps.flatMap((app) =>
+function renderMetadata(manifest) {
+    const rows = manifest.metadataUpdates.flatMap((app) =>
         app.changes.map(
             (change) =>
-                `| ${tableCell(app.name)} | ${tableCell(change.field)} | ${tableCell(change.from)} | ${tableCell(change.to)} | ${tableCell(change.reason)} |`,
+                `| ${tableCell(app.name)} | ${tableCell(change.field)} | ${tableCell(change.from)} | ${tableCell(change.to)} |`,
         ),
     );
-    const removals = removedApps.map(
-        (app) =>
-            `| ${tableCell(app.name)} | ${tableCell(app.url)} | ${tableCell(app.proposalReason || app.reason)} | ${tableCell(app.confirmationReason || app.reason)} |`,
-    );
-    const unresolvedRows = unresolved.map((result) =>
-        [
-            tableCell(result.name),
-            tableCell(result.retryKind || "unspecified"),
-            tableCell(
-                [
-                    result.uploadError ||
-                        result.error ||
-                        result.review?.reason ||
-                        "No usable screenshot",
-                    result.review?.proposal?.reason
-                        ? `Proposed removal: ${result.review.proposal.reason}`
-                        : null,
-                    result.review?.confirmation?.reason
-                        ? `Independent review: ${result.review.confirmation.reason}`
-                        : null,
-                ]
-                    .filter(Boolean)
-                    .join(" — "),
-            ),
-            tableCell(result.evidenceUrl || result.evidenceFile),
-        ].join(" | "),
-    );
-    const evidence = unresolved
-        .filter((result) =>
-            /^https:\/\/media\.pollinations\.ai\/\S+$/.test(
-                result.evidenceUrl || "",
-            ),
-        )
-        .map(
-            (result) =>
-                `<details><summary>${html(result.name)}</summary>\n\n![Retry evidence](${result.evidenceUrl})\n\n</details>`,
-        );
-    const marker =
-        removedApps.length > 0
-            ? `<!-- pollinations-app-management:${Buffer.from(
-                  JSON.stringify({ action: "remove", apps: removedApps }),
-              ).toString("base64")} -->`
-            : "";
-    const evidenceSummary = runUrl
-        ? `[Structured report and screenshot evidence](${runUrl}) are retained for 30 days.`
-        : "The structured report and screenshot evidence were reviewed locally before this draft was created.";
-
     return `## Summary
 
-- Reviewed ${results.length} targets: ${kept} kept, ${removedApps.length} removed, ${unresolved.length} queued for retry.
-- Updated ${updatedApps.length} catalog rows with accepted screenshots or metadata corrections.
-- ${evidenceSummary}
+- Corrects metadata for ${manifest.metadataUpdates.length} community catalog rows.
+- Does not remove apps or add screenshots.
 
-## Catalog updates
-
-| App | Field | Before | After | Reason |
-| --- | --- | --- | --- | --- |
-${updates.join("\n") || "| — | — | — | — | None |"}
-
-## Removed
-
-| App | URL | Agent finding | Independent confirmation |
+| App | Field | Before | After |
 | --- | --- | --- | --- |
-${removals.join("\n") || "| — | — | — | None |"}
-
-## Retry queue — no catalog change
-
-| App | Type | Reason | Evidence |
-| --- | --- | --- | --- |
-${unresolvedRows.map((row) => `| ${row} |`).join("\n") || "| — | — | None | — |"}
-
-### Screenshot evidence
-
-${evidence.join("\n\n") || "No anonymous screenshot evidence was safe to publish."}
-
-${marker}
+${rows.join("\n") || "| — | — | — | — |"}
 `;
 }
 
+function renderRemovals(manifest) {
+    const rows = manifest.removedApps.map(
+        (app) =>
+            `| ${tableCell(app.name)} | ${tableCell(app.targetUrl)} | ${tableCell(app.reason)} | ${tableCell(app.evidence)} |`,
+    );
+    return `## Summary
+
+- Removes ${manifest.removedApps.length} catalog rows after explicit browser review and approval.
+- Does not change retained-app metadata or screenshots.
+
+| App | Reviewed target | Reason | Evidence |
+| --- | --- | --- | --- |
+${rows.join("\n") || "| — | — | — | — |"}
+`;
+}
+
+function renderScreenshots(manifest) {
+    const rows = manifest.screenshotUpdates.map(
+        (app) => `| ${tableCell(app.name)} | ${tableCell(app.to)} |`,
+    );
+    return `## Summary
+
+- Adds or refreshes screenshots for ${manifest.screenshotUpdates.length} retained community catalog rows.
+- Does not remove apps or change other metadata.
+
+| App | Screenshot URL |
+| --- | --- |
+${rows.join("\n") || "| — | — |"}
+`;
+}
+
+function renderPrBody(manifest, kind) {
+    if (kind === "metadata") return renderMetadata(manifest);
+    if (kind === "removals") return renderRemovals(manifest);
+    if (kind === "screenshots") return renderScreenshots(manifest);
+    throw new Error("kind must be metadata, removals, or screenshots");
+}
+
 if (require.main === module) {
-    const [reportPath, runUrl] = process.argv.slice(2);
-    if (!reportPath || !runUrl) {
-        throw new Error("Usage: render-pr-body.js REPORT_PATH RUN_URL");
+    const [manifestPath, kind] = process.argv.slice(2);
+    if (!manifestPath || !kind) {
+        throw new Error(
+            "Usage: render-pr-body.js RUN/split/manifest.json metadata|removals|screenshots",
+        );
     }
     process.stdout.write(
-        renderPrBody(JSON.parse(fs.readFileSync(reportPath, "utf8")), runUrl),
+        renderPrBody(JSON.parse(fs.readFileSync(manifestPath, "utf8")), kind),
     );
 }
 
-module.exports = { renderPrBody };
+module.exports = { renderPrBody, tableCell };
