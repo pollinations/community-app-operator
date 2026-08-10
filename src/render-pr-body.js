@@ -31,13 +31,18 @@ ${rows.join("\n") || "| — | — | — | — |"}
 }
 
 function renderRemovals(manifest) {
+    const decisions = manifest.decisions ?? {};
+    const approvedTargets = decisions.remove ?? manifest.removedApps.length;
+    const keptTargets = decisions.keep ?? 0;
+    const retryTargets = decisions.retry ?? 0;
     const rows = manifest.removedApps.map(
         (app) =>
             `| ${tableCell(app.name)} | ${tableCell(app.targetUrl)} | ${tableCell(app.reason)} | ${tableCell(app.evidence)} |`,
     );
     return `## Summary
 
-- Removes ${manifest.removedApps.length} catalog rows after explicit browser review and approval.
+- Removes ${manifest.removedApps.length} catalog rows representing ${approvedTargets} approved review targets.
+- Preserves ${keptTargets} verified apps and excludes ${retryTargets} inconclusive apps from this PR.
 - Does not change retained-app metadata or screenshots.
 
 | App | Reviewed target | Reason | Evidence |

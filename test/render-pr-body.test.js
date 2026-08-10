@@ -3,6 +3,7 @@ const test = require("node:test");
 const { renderPrBody } = require("../src/render-pr-body.js");
 
 const manifest = {
+    decisions: { keep: 2, remove: 1, retry: 3 },
     metadataUpdates: [
         {
             changes: [{ field: "name", from: "Old", to: "New" }],
@@ -32,7 +33,8 @@ test("renders kind-specific PR bodies", () => {
     assert.doesNotMatch(metadata, /Host does not exist/);
 
     const removals = renderPrBody(manifest, "removals");
-    assert.match(removals, /Removes 1 catalog rows/);
+    assert.match(removals, /Removes 1 catalog rows representing 1 approved/);
+    assert.match(removals, /Preserves 2 verified apps and excludes 3 inconclusive/);
     assert.match(removals, /DNS failure &#124; twice/);
     assert.doesNotMatch(removals, /media\.pollinations/);
 
